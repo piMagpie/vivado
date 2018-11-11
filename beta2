@@ -91,7 +91,7 @@ begin
         
         variable number_decs : integer:= 0;
                 variable remaining_decs : integer := 0;
-                constant number_seconds: integer := 7;
+                constant alarm_decs: integer := 70;
                 variable counter : integer := 0;
                 
         procedure generate_colors is
@@ -163,21 +163,19 @@ begin
             current_state := ALARM_STATE;
             counter := 0;
             reset_timer <= '1';
-
+            remaining_decs :=  alarm_decs;
         elsif current_state = ALARM_STATE then
             reset_timer <= '0';
             if ( rising_edge(finished) ) then
                 if remaining_decs <= 0 then
                     current_state := previous_state;
                 else
-                                      R <= "11111111"; G <= "11111111"; B  <= "11111111";       
-
-                    -- generate_alarm_colors(counter);
+                    -- R <= "00000000"; G <= "00000000"; B  <= "00000000"; 
                     remaining_decs := remaining_decs - number_decs;
                     counter := counter + 1;
                 end if;
-                R <= "11111111"; G <= "11111111"; B  <= "11111111";
-            end if;   
+             end if;   
+             generate_alarm_colors(counter);
         else
             if rising_edge(finished) then
                 change_state;
@@ -185,7 +183,8 @@ begin
             reset_timer <= '0';
             generate_colors;
         end if;
-        DEC_SECONDS <= 10; --get_decs(speed,current_state,alarm_executing);
+        
+        DEC_SECONDS <= get_decs(speed,current_state,alarm_executing);
         CLK_TIMER <= CLK;
     end process state_process;
     
