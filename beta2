@@ -1,0 +1,196 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+-- Uncomment the following library declaration if using
+-- arithmetic functions with Signed or Unsigned values
+--use IEEE.NUMERIC_STD.ALL;
+
+-- Uncomment the following library declaration if instantiating
+-- any Xilinx leaf cells in this code.
+--library UNISIM;
+--use UNISIM.VComponents.all;
+
+entity RGB_LED is
+port(
+    CLK: in std_logic;
+    reset: in std_logic;
+    speed: in std_logic_vector(2 downto 0); 
+    backwards_loop : in std_logic;
+    alarm: in std_logic;
+
+    R : out std_logic_vector(7 downto 0);
+    G : out std_logic_vector(7 downto 0);
+    B : out std_logic_vector(7 downto 0)
+);
+end RGB_LED;
+
+architecture Behavioral of RGB_LED is
+    COMPONENT Timer
+         Port ( CLK : in STD_LOGIC;
+              DEC_SECONDS : in INTEGER;
+              RESET : in STD_LOGIC;
+              finished : out STD_LOGIC);
+    END COMPONENT;
+    
+    type STATE is (STANDBY, RED, YELLOW, GREEN, BLUE, PURPLE, ALARM_STATE);
+    
+    signal CLK_TIMER: STD_LOGIC := '0';
+    signal DEC_SECONDS: INTEGER;
+    signal finished: STD_LOGIC;
+    signal reset_timer: STD_LOGIC := '0';
+    
+     function get_decs_from_speed(speed: std_logic_vector(2 downto 0) ) return integer is
+               variable decs : integer;
+           begin
+               decs := 10;  -- default speed 1 second/color
+               
+               
+                   if speed = "001" then
+                       decs := 10;
+                   elsif speed = "011" then
+                       decs := 30;
+                   elsif speed = "111" then
+                       decs := 50;
+                   end if;
+             
+               return decs;
+           end function get_decs_from_speed;
+           
+    -- common function and methods
+    function get_decs(speed: std_logic_vector(2 downto 0); current_state: STATE; alarm: std_logic ) return integer is
+            variable decs : integer;
+        begin
+            decs := 0;
+            
+            if current_state = STANDBY then
+                decs := 40;
+            else
+                decs := get_decs_from_speed(speed);
+            end if;
+            
+            if alarm = '1' then
+                decs := decs  / 10;        
+            end if;
+            return decs;
+        end function get_decs;
+begin
+    dut: Timer PORT MAP(
+        CLK => CLK_TIMER,
+        DEC_SECONDS=> DEC_SECONDS,
+        RESET => reset_timer,
+        finished => finished
+    );
+    
+    -- STATE PROCESS
+    state_process : process(reset, speed, backwards_loop, finished, clk, alarm)
+        variable up : std_logic := '1';
+        variable alarm_executing : STD_LOGIC := '0';
+            
+        variable current_state : STATE := STANDBY;
+        variable previous_state : STATE;
+        
+        variable number_decs : integer:= 0;
+                variable remaining_decs : integer := 0;
+                constant number_seconds: integer := 7;
+                variable counter : integer := 0;
+                
+        procedure generate_colors is
+        begin
+           if current_state = RED then
+               R <= "11111111"; G <= "00000000"; B  <= "00000000";
+           elsif current_state = YELLOW then
+               R <= "11111111"; G <= "11111111"; B  <= "00000000";
+           elsif current_state = GREEN then
+               R <= "00000000"; G <= "11111111"; B  <= "00000000";                
+           elsif current_state = BLUE then
+               R <= "00000000"; G <= "00000000"; B  <= "11111111";
+           elsif current_state = PURPLE then
+               R <= "10000000"; G <= "00000000"; B  <= "10000000";
+           elsif current_state = PURPLE then
+               R <= "10000000"; G <= "00000000"; B  <= "10000000";
+           else -- STANDBY
+               R <= "11111111"; G <= "11111111"; B  <= "11111111";   
+           end if;
+        end procedure generate_colors;
+        
+        procedure change_state is
+
+        begin
+            -- if ( current_state = ALARM_STATE) then
+            --  current_state := previous_state;
+            -- else
+              if ( backwards_loop = '0' ) then
+                  if current_state = PURPLE then
+                      current_state := RED;
+                  else
+                      current_state := STATE'SUCC(current_state);    
+                  end if;
+              else
+                  if ( up = '1' ) then
+                      if current_state = PURPLE then
+                          current_state := BLUE;
+                          up := '0';
+                      else
+                          current_state := STATE'SUCC(current_state);    
+                      end if;
+                  else
+                      if current_state = RED then
+                          current_state := YELLOW;
+                          up := '1';
+                      else
+                          current_state := STATE'PRED(current_state);    
+                      end if;
+                  end if;
+              end if;
+            -- end if; 
+            previous_state := current_state; 
+        end procedure change_state;
+         
+         procedure generate_alarm_colors(index: integer) is
+               begin
+                   if ( index mod 2 = 0) then
+                      R <= "11111111"; G <= "11111111"; B  <= "11111111";       
+                   else
+                      R <= "00000000"; G <= "00000000"; B  <= "00000000"; 
+                   end if;
+               end procedure generate_alarm_colors;
+    begin
+        if reset= '1' then
+           current_state := STANDBY;
+           up := '1';
+           reset_timer <= '1'; 
+        elsif alarm = '1' and current_state /= ALARM_STATE then
+            current_state := ALARM_STATE;
+            counter := 0;
+            reset_timer <= '1';
+
+        elsif current_state = ALARM_STATE then
+            reset_timer <= '0';
+            if ( rising_edge(finished) ) then
+                if remaining_decs <= 0 then
+                    current_state := previous_state;
+                else
+                                      R <= "11111111"; G <= "11111111"; B  <= "11111111";       
+
+                    -- generate_alarm_colors(counter);
+                    remaining_decs := remaining_decs - number_decs;
+                    counter := counter + 1;
+                end if;
+                R <= "11111111"; G <= "11111111"; B  <= "11111111";
+            end if;   
+        else
+            if rising_edge(finished) then
+                change_state;
+            end if;
+            reset_timer <= '0';
+            generate_colors;
+        end if;
+        DEC_SECONDS <= 10; --get_decs(speed,current_state,alarm_executing);
+        CLK_TIMER <= CLK;
+    end process state_process;
+    
+    
+    ----------------------------------------------------------------------------
+    ----------------------------------------------------------------------------
+    ----------------------------------------------------------------------------
+end Behavioral;
